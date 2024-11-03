@@ -3,7 +3,6 @@ import pymunk
 import random
 import sys
 
-# Initialize Pygame and Pymunk
 pygame.init()
 SCREEN_WIDTH = 400
 SCREEN_HEIGHT = 600
@@ -11,12 +10,10 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Sandtris")
 clock = pygame.time.Clock()
 space = pymunk.Space()
-space.gravity = (0, -1000)  # Gravity pulling downwards (negative y)
-space.iterations = 30
+space.gravity = (0, -1000) 
 space.sleep_time_threshold = 0.5
 space.collision_slop = 0.5
 
-# Define constants and colors
 BLOCK_SIZE = 20
 SAND_RADIUS = 2
 FPS = 60
@@ -33,7 +30,7 @@ COLORS = [
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 
-# Define the tetromino shapes
+# Define the shapes
 tetromino_shapes = {
     'I': [(-2, 0), (-1, 0), (0, 0), (1, 0)],
     'O': [(-1, 0), (0, 0), (-1, 1), (0, 1)],
@@ -44,35 +41,33 @@ tetromino_shapes = {
     'L': [(-1, 0), (0, 0), (1, 0), (1, 1)],
 }
 
-# Grid parameters for line detection
+# gotta update this for better line detection
 GRID_CELL_SIZE = SAND_RADIUS * 2
 GRID_WIDTH = SCREEN_WIDTH // GRID_CELL_SIZE
 GRID_HEIGHT = SCREEN_HEIGHT // GRID_CELL_SIZE
 sand_grid = [[None for _ in range(GRID_WIDTH)] for _ in range(GRID_HEIGHT)]
 
-# Create static floor
+
 def create_static_floor():
     body = pymunk.Body(body_type=pymunk.Body.STATIC)
     shape = pymunk.Segment(body, (0, 0), (SCREEN_WIDTH, 0), 1)
     shape.friction = 1.0
     space.add(body, shape)
 
-# Create static walls
 def create_walls():
-    wall_thickness = 10  # Increase the thickness of the walls
-    # Left Wall
+    wall_thickness = 1  # Increase the thickness of the walls
     body_left = pymunk.Body(body_type=pymunk.Body.STATIC)
     shape_left = pymunk.Segment(body_left, (wall_thickness / 2, 0), (wall_thickness / 2, SCREEN_HEIGHT), wall_thickness)
     shape_left.friction = 1.0
     space.add(body_left, shape_left)
 
-    # Right Wall
+
     body_right = pymunk.Body(body_type=pymunk.Body.STATIC)
     shape_right = pymunk.Segment(body_right, (SCREEN_WIDTH - wall_thickness / 2, 0), (SCREEN_WIDTH - wall_thickness / 2, SCREEN_HEIGHT), wall_thickness)
     shape_right.friction = 1.0
     space.add(body_right, shape_right)
 
-# Tetromino class
+
 class Tetromino:
     def __init__(self, shape_name):
         self.shape_name = shape_name
@@ -82,7 +77,7 @@ class Tetromino:
 
     def create_blocks(self):
         offsets = tetromino_shapes[self.shape_name]
-        initial_y = SCREEN_HEIGHT - BLOCK_SIZE * 2  # Start near the top
+        initial_y = SCREEN_HEIGHT - BLOCK_SIZE * 2  # Start near top
         for offset in offsets:
             x = SCREEN_WIDTH // 2 + offset[0] * BLOCK_SIZE
             y = initial_y + offset[1] * BLOCK_SIZE
@@ -102,10 +97,8 @@ class Tetromino:
 
     def check_collision(self):
         for block in self.blocks:
-            # Check if block is below the floor
             if block.body.position.y - BLOCK_SIZE / 2 <= 0:
                 return True
-            # Check for collisions with static shapes
             for shape in space.shapes:
                 if shape not in [b.shape for b in self.blocks]:
                     if block.shape.shapes_collide(shape).points:
@@ -115,9 +108,7 @@ class Tetromino:
     def land(self):
         for block in self.blocks:
             x, y = block.body.position
-            # Remove the old kinematic body and shape
             space.remove(block.body, block.shape)
-            # Create a new dynamic body at the same position
             mass = 1.0
             moment = pymunk.moment_for_box(mass, (BLOCK_SIZE, BLOCK_SIZE))
             block.body = pymunk.Body(mass, moment)
@@ -129,7 +120,6 @@ class Tetromino:
             space.add(block.body, block.shape)
             block.landed = True
 
-# Block class
 class Block:
     def __init__(self, x, y, color):
         self.color = color
@@ -138,24 +128,24 @@ class Block:
         self.shape = pymunk.Poly.create_box(self.body, size=(BLOCK_SIZE, BLOCK_SIZE))
         self.shape.friction = 0.5
         self.shape.elasticity = 0
-        self.shape.block = self  # Reference back to the block
+        self.shape.block = self  
         space.add(self.body, self.shape)
         self.landed = False
 
 def create_block(x, y, color):
     return Block(x, y, color)
 
-# Sand grain class
+
 class SandGrain:
     def __init__(self, x, y, color):
-        mass = 0.1
+        mass = 0.2
         radius = SAND_RADIUS
         moment = pymunk.moment_for_circle(mass, 0, radius)
 
         self.body = pymunk.Body(mass, moment)
         self.body.position = x, y
         self.shape = pymunk.Circle(self.body, radius)
-        self.shape.friction = 0.5
+        self.shape.friction = 0.5 #come back and adjust this friction
         self.shape.elasticity = 0
         self.shape.grain = self  # Reference back to the grain
         self.color = color
@@ -174,8 +164,7 @@ def break_tetromino(tetromino):
     for block in tetromino.blocks:
         x, y = block.body.position
         space.remove(block.body, block.shape)
-        # Create a grid of sand grains for each block
-        grains_per_row = BLOCK_SIZE // (SAND_RADIUS * 2)
+        grains_per_row = BLOCK_SIZE // (SAND_RADIUS * 2) #maybe instead of a grid of sand i make the sand in a different way?
         grain_size = BLOCK_SIZE / grains_per_row
         for i in range(grains_per_row):
             for j in range(grains_per_row):
@@ -190,15 +179,13 @@ def remove_offscreen_grains():
                 space.remove(shape.body, shape)
 
 def update_sand_grid():
-    # Clear the grid
     for y in range(GRID_HEIGHT):
         for x in range(GRID_WIDTH):
             sand_grid[y][x] = None
 
-    # Re-populate the grid
     for shape in space.shapes:
         if isinstance(shape, pymunk.Circle):
-            grain = shape.grain  # Reference back to the grain
+            grain = shape.grain  
             grain.update_grid_position()
 
 def check_and_remove_full_lines():
@@ -216,11 +203,9 @@ def check_and_remove_full_lines():
             if len(grains) >= GRID_WIDTH:
                 grains_to_remove.extend(grains)
 
-    # Remove grains
     for grain in grains_to_remove:
         space.remove(grain.body, grain.shape)
 
-# Drawing functions
 def draw_objects():
     for shape in space.shapes:
         if isinstance(shape, pymunk.Poly):
@@ -250,7 +235,7 @@ def draw_segment(shape):
     p2 = int(pv2.x), int(SCREEN_HEIGHT - pv2.y)
     pygame.draw.line(screen, WHITE, p1, p2, int(shape.radius * 2))
 
-# Main game loop
+# Main game 
 def main():
     create_static_floor()
     create_walls()
@@ -258,9 +243,8 @@ def main():
     drop_event = pygame.USEREVENT + 1
     pygame.time.set_timer(drop_event, 500)
 
-    # Variables for movement delays
     INITIAL_MOVE_DELAY = 0     # milliseconds (no initial delay)
-    REPEAT_MOVE_DELAY = 100    # milliseconds
+    REPEAT_MOVE_DELAY = 10    # milliseconds
     key_down_time = {}
     last_move_time = {}
 
@@ -287,22 +271,18 @@ def main():
                 if event.key == pygame.K_UP:
                     current_tetromino.rotate()
                     if current_tetromino.check_collision():
-                        # Rotate back if collision detected
                         for _ in range(3):
                             current_tetromino.rotate()
-                # Record the time when a key is first pressed
                 if event.key in [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_DOWN]:
                     key_down_time[event.key] = pygame.time.get_ticks()
                     last_move_time[event.key] = pygame.time.get_ticks()
 
             elif event.type == pygame.KEYUP:
-                # Remove the key from the key_down_time dictionary when released
                 if event.key in key_down_time:
                     del key_down_time[event.key]
                 if event.key in last_move_time:
                     del last_move_time[event.key]
 
-        # Handle continuous movement
         current_time = pygame.time.get_ticks()
         keys = pygame.key.get_pressed()
 
@@ -311,7 +291,7 @@ def main():
                 if key not in key_down_time:
                     key_down_time[key] = current_time
                     last_move_time[key] = current_time
-                    move = True  # Move immediately when key is first pressed
+                    move = True  
                 else:
                     elapsed = current_time - last_move_time[key]
                     if elapsed >= REPEAT_MOVE_DELAY:
@@ -338,21 +318,17 @@ def main():
                 if key in last_move_time:
                     del last_move_time[key]
 
-        # Update physics
         try:
             space.step(1 / FPS)
         except Exception as e:
             print("Physics simulation error:", e)
             running = False
 
-        # Update sand grid and check for full lines
         update_sand_grid()
         check_and_remove_full_lines()
 
-        # Remove offscreen grains
         remove_offscreen_grains()
 
-        # Draw all objects
         draw_objects()
 
         pygame.display.flip()
