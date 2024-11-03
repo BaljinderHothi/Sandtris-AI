@@ -57,6 +57,21 @@ def create_static_floor():
     shape.friction = 1.0
     space.add(body, shape)
 
+# Create static walls
+def create_walls():
+    wall_thickness = 10  # Increase the thickness of the walls
+    # Left Wall
+    body_left = pymunk.Body(body_type=pymunk.Body.STATIC)
+    shape_left = pymunk.Segment(body_left, (wall_thickness / 2, 0), (wall_thickness / 2, SCREEN_HEIGHT), wall_thickness)
+    shape_left.friction = 1.0
+    space.add(body_left, shape_left)
+
+    # Right Wall
+    body_right = pymunk.Body(body_type=pymunk.Body.STATIC)
+    shape_right = pymunk.Segment(body_right, (SCREEN_WIDTH - wall_thickness / 2, 0), (SCREEN_WIDTH - wall_thickness / 2, SCREEN_HEIGHT), wall_thickness)
+    shape_right.friction = 1.0
+    space.add(body_right, shape_right)
+
 # Tetromino class
 class Tetromino:
     def __init__(self, shape_name):
@@ -87,10 +102,8 @@ class Tetromino:
 
     def check_collision(self):
         for block in self.blocks:
-            # Check if block is below the floor or out of bounds
-            if block.body.position.y - BLOCK_SIZE / 2 <= 0 or \
-               block.body.position.x - BLOCK_SIZE / 2 < 0 or \
-               block.body.position.x + BLOCK_SIZE / 2 > SCREEN_WIDTH:
+            # Check if block is below the floor
+            if block.body.position.y - BLOCK_SIZE / 2 <= 0:
                 return True
             # Check for collisions with static shapes
             for shape in space.shapes:
@@ -214,6 +227,8 @@ def draw_objects():
             draw_rect(shape)
         elif isinstance(shape, pymunk.Circle):
             draw_circle(shape)
+        elif isinstance(shape, pymunk.Segment):
+            draw_segment(shape)
 
 def draw_rect(shape):
     vertices = [v.rotated(shape.body.angle) + shape.body.position
@@ -227,30 +242,27 @@ def draw_circle(shape):
     color = shape.grain.color if hasattr(shape, 'grain') else WHITE
     pygame.draw.circle(screen, color, position, int(shape.radius))
 
-def create_walls():
-    # Left Wall
-    body_left = pymunk.Body(body_type=pymunk.Body.STATIC)
-    shape_left = pymunk.Segment(body_left, (0, 0), (0, SCREEN_HEIGHT), 1)
-    shape_left.friction = 1.0
-    space.add(body_left, shape_left)
+def draw_segment(shape):
+    body = shape.body
+    pv1 = body.position + shape.a.rotated(body.angle)
+    pv2 = body.position + shape.b.rotated(body.angle)
+    p1 = int(pv1.x), int(SCREEN_HEIGHT - pv1.y)
+    p2 = int(pv2.x), int(SCREEN_HEIGHT - pv2.y)
+    pygame.draw.line(screen, WHITE, p1, p2, int(shape.radius * 2))
 
-    # Right Wall
-    body_right = pymunk.Body(body_type=pymunk.Body.STATIC)
-    shape_right = pymunk.Segment(body_right, (SCREEN_WIDTH, 0), (SCREEN_WIDTH, SCREEN_HEIGHT), 1)
-    shape_right.friction = 1.0
-    space.add(body_right, shape_right)
-    
 # Main game loop
 def main():
     create_static_floor()
+    create_walls()
     current_tetromino = Tetromino(random.choice(list(tetromino_shapes.keys())))
     drop_event = pygame.USEREVENT + 1
     pygame.time.set_timer(drop_event, 500)
 
     # Variables for movement delays
-    INITIAL_MOVE_DELAY = 200  # milliseconds
-    REPEAT_MOVE_DELAY = 50    # milliseconds
+    INITIAL_MOVE_DELAY = 0     # milliseconds (no initial delay)
+    REPEAT_MOVE_DELAY = 100    # milliseconds
     key_down_time = {}
+    last_move_time = {}
 
     running = True
     while running:
@@ -281,11 +293,14 @@ def main():
                 # Record the time when a key is first pressed
                 if event.key in [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_DOWN]:
                     key_down_time[event.key] = pygame.time.get_ticks()
+                    last_move_time[event.key] = pygame.time.get_ticks()
 
             elif event.type == pygame.KEYUP:
                 # Remove the key from the key_down_time dictionary when released
                 if event.key in key_down_time:
                     del key_down_time[event.key]
+                if event.key in last_move_time:
+                    del last_move_time[event.key]
 
         # Handle continuous movement
         current_time = pygame.time.get_ticks()
@@ -295,15 +310,13 @@ def main():
             if keys[key]:
                 if key not in key_down_time:
                     key_down_time[key] = current_time
+                    last_move_time[key] = current_time
                     move = True  # Move immediately when key is first pressed
                 else:
-                    elapsed = current_time - key_down_time[key]
-                    if elapsed > INITIAL_MOVE_DELAY:
-                        repeats = (elapsed - INITIAL_MOVE_DELAY) // REPEAT_MOVE_DELAY
-                        if (elapsed - INITIAL_MOVE_DELAY) % REPEAT_MOVE_DELAY < FPS:
-                            move = True
-                        else:
-                            move = False
+                    elapsed = current_time - last_move_time[key]
+                    if elapsed >= REPEAT_MOVE_DELAY:
+                        move = True
+                        last_move_time[key] = current_time
                     else:
                         move = False
                 if move:
@@ -322,6 +335,8 @@ def main():
             else:
                 if key in key_down_time:
                     del key_down_time[key]
+                if key in last_move_time:
+                    del last_move_time[key]
 
         # Update physics
         try:
