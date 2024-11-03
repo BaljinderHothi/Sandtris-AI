@@ -3,20 +3,20 @@ import pymunk
 import random
 import sys
 
-
+# Initialize Pygame and Pymunk
 pygame.init()
-SCREEN_WIDTH = 600
-SCREEN_HEIGHT = 800
+SCREEN_WIDTH = 400
+SCREEN_HEIGHT = 600
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Sandtris")
 clock = pygame.time.Clock()
 space = pymunk.Space()
-space.gravity = (0, -1000)  
+space.gravity = (0, -1000)  # Gravity pulling downwards (negative y)
 space.iterations = 30
 space.sleep_time_threshold = 0.5
 space.collision_slop = 0.5
 
-
+# Define constants and colors
 BLOCK_SIZE = 20
 SAND_RADIUS = 2
 FPS = 60
@@ -33,6 +33,7 @@ COLORS = [
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 
+# Define the tetromino shapes
 tetromino_shapes = {
     'I': [(-2, 0), (-1, 0), (0, 0), (1, 0)],
     'O': [(-1, 0), (0, 0), (-1, 1), (0, 1)],
@@ -86,10 +87,12 @@ class Tetromino:
 
     def check_collision(self):
         for block in self.blocks:
+            # Check if block is below the floor or out of bounds
             if block.body.position.y - BLOCK_SIZE / 2 <= 0 or \
                block.body.position.x - BLOCK_SIZE / 2 < 0 or \
                block.body.position.x + BLOCK_SIZE / 2 > SCREEN_WIDTH:
                 return True
+            # Check for collisions with static shapes
             for shape in space.shapes:
                 if shape not in [b.shape for b in self.blocks]:
                     if block.shape.shapes_collide(shape).points:
@@ -99,7 +102,9 @@ class Tetromino:
     def land(self):
         for block in self.blocks:
             x, y = block.body.position
+            # Remove the old kinematic body and shape
             space.remove(block.body, block.shape)
+            # Create a new dynamic body at the same position
             mass = 1.0
             moment = pymunk.moment_for_box(mass, (BLOCK_SIZE, BLOCK_SIZE))
             block.body = pymunk.Body(mass, moment)
@@ -120,14 +125,14 @@ class Block:
         self.shape = pymunk.Poly.create_box(self.body, size=(BLOCK_SIZE, BLOCK_SIZE))
         self.shape.friction = 0.5
         self.shape.elasticity = 0
-        self.shape.block = self  
+        self.shape.block = self  # Reference back to the block
         space.add(self.body, self.shape)
         self.landed = False
 
 def create_block(x, y, color):
     return Block(x, y, color)
 
-# Sand grains
+# Sand grain class
 class SandGrain:
     def __init__(self, x, y, color):
         mass = 0.1
@@ -139,7 +144,7 @@ class SandGrain:
         self.shape = pymunk.Circle(self.body, radius)
         self.shape.friction = 0.5
         self.shape.elasticity = 0
-        self.shape.grain = self  
+        self.shape.grain = self  # Reference back to the grain
         self.color = color
         space.add(self.body, self.shape)
 
@@ -177,10 +182,10 @@ def update_sand_grid():
         for x in range(GRID_WIDTH):
             sand_grid[y][x] = None
 
- 
+    # Re-populate the grid
     for shape in space.shapes:
         if isinstance(shape, pymunk.Circle):
-            grain = shape.grain  
+            grain = shape.grain  # Reference back to the grain
             grain.update_grid_position()
 
 def check_and_remove_full_lines():
@@ -198,11 +203,11 @@ def check_and_remove_full_lines():
             if len(grains) >= GRID_WIDTH:
                 grains_to_remove.extend(grains)
 
-   
+    # Remove grains
     for grain in grains_to_remove:
         space.remove(grain.body, grain.shape)
 
-
+# Drawing functions
 def draw_objects():
     for shape in space.shapes:
         if isinstance(shape, pymunk.Poly):
@@ -222,12 +227,30 @@ def draw_circle(shape):
     color = shape.grain.color if hasattr(shape, 'grain') else WHITE
     pygame.draw.circle(screen, color, position, int(shape.radius))
 
-# Main game 
+def create_walls():
+    # Left Wall
+    body_left = pymunk.Body(body_type=pymunk.Body.STATIC)
+    shape_left = pymunk.Segment(body_left, (0, 0), (0, SCREEN_HEIGHT), 1)
+    shape_left.friction = 1.0
+    space.add(body_left, shape_left)
+
+    # Right Wall
+    body_right = pymunk.Body(body_type=pymunk.Body.STATIC)
+    shape_right = pymunk.Segment(body_right, (SCREEN_WIDTH, 0), (SCREEN_WIDTH, SCREEN_HEIGHT), 1)
+    shape_right.friction = 1.0
+    space.add(body_right, shape_right)
+    
+# Main game loop
 def main():
     create_static_floor()
     current_tetromino = Tetromino(random.choice(list(tetromino_shapes.keys())))
     drop_event = pygame.USEREVENT + 1
     pygame.time.set_timer(drop_event, 500)
+
+    # Variables for movement delays
+    INITIAL_MOVE_DELAY = 200  # milliseconds
+    REPEAT_MOVE_DELAY = 50    # milliseconds
+    key_down_time = {}
 
     running = True
     while running:
@@ -249,24 +272,56 @@ def main():
                         random.choice(list(tetromino_shapes.keys())))
 
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_LEFT:
-                    current_tetromino.move(-1, 0)
-                    if current_tetromino.check_collision():
-                        current_tetromino.move(1, 0)
-                elif event.key == pygame.K_RIGHT:
-                    current_tetromino.move(1, 0)
-                    if current_tetromino.check_collision():
-                        current_tetromino.move(-1, 0)
-                elif event.key == pygame.K_DOWN:
-                    current_tetromino.move(0, -1)
-                    if current_tetromino.check_collision():
-                        current_tetromino.move(0, 1)
-                elif event.key == pygame.K_UP:
+                if event.key == pygame.K_UP:
                     current_tetromino.rotate()
                     if current_tetromino.check_collision():
                         # Rotate back if collision detected
                         for _ in range(3):
                             current_tetromino.rotate()
+                # Record the time when a key is first pressed
+                if event.key in [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_DOWN]:
+                    key_down_time[event.key] = pygame.time.get_ticks()
+
+            elif event.type == pygame.KEYUP:
+                # Remove the key from the key_down_time dictionary when released
+                if event.key in key_down_time:
+                    del key_down_time[event.key]
+
+        # Handle continuous movement
+        current_time = pygame.time.get_ticks()
+        keys = pygame.key.get_pressed()
+
+        for key in [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_DOWN]:
+            if keys[key]:
+                if key not in key_down_time:
+                    key_down_time[key] = current_time
+                    move = True  # Move immediately when key is first pressed
+                else:
+                    elapsed = current_time - key_down_time[key]
+                    if elapsed > INITIAL_MOVE_DELAY:
+                        repeats = (elapsed - INITIAL_MOVE_DELAY) // REPEAT_MOVE_DELAY
+                        if (elapsed - INITIAL_MOVE_DELAY) % REPEAT_MOVE_DELAY < FPS:
+                            move = True
+                        else:
+                            move = False
+                    else:
+                        move = False
+                if move:
+                    if key == pygame.K_LEFT:
+                        current_tetromino.move(-1, 0)
+                        if current_tetromino.check_collision():
+                            current_tetromino.move(1, 0)
+                    elif key == pygame.K_RIGHT:
+                        current_tetromino.move(1, 0)
+                        if current_tetromino.check_collision():
+                            current_tetromino.move(-1, 0)
+                    elif key == pygame.K_DOWN:
+                        current_tetromino.move(0, -1)
+                        if current_tetromino.check_collision():
+                            current_tetromino.move(0, 1)
+            else:
+                if key in key_down_time:
+                    del key_down_time[key]
 
         # Update physics
         try:
@@ -274,9 +329,15 @@ def main():
         except Exception as e:
             print("Physics simulation error:", e)
             running = False
+
+        # Update sand grid and check for full lines
         update_sand_grid()
         check_and_remove_full_lines()
+
+        # Remove offscreen grains
         remove_offscreen_grains()
+
+        # Draw all objects
         draw_objects()
 
         pygame.display.flip()
