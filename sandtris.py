@@ -14,7 +14,7 @@ space.gravity = (0, -1000)
 space.sleep_time_threshold = 0.5
 space.collision_slop = 0.5
 
-BLOCK_SIZE = 20
+BLOCK_SIZE = 30
 SAND_RADIUS = 2
 FPS = 60
 
