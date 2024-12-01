@@ -1,338 +1,219 @@
 import pygame
-import pymunk
+
 import random
-import sys
 
-pygame.init()
-SCREEN_WIDTH = 400
-SCREEN_HEIGHT = 600
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Sandtris")
-clock = pygame.time.Clock()
-space = pymunk.Space()
-space.gravity = (0, -1000) 
-space.sleep_time_threshold = 0.5
-space.collision_slop = 0.5
-
-BLOCK_SIZE = 30
-SAND_RADIUS = 2
-FPS = 60
-
-COLORS = [
-    (255, 0, 0),    # Red
-    (0, 255, 0),    # Green
-    (0, 0, 255),    # Blue
-    (255, 255, 0),  # Yellow
-    (255, 165, 0),  # Orange
-    (128, 0, 128),  # Purple
-    (0, 255, 255),  # Cyan
+colors = [
+    (0, 0, 0),
+    (120, 37, 179),
+    (100, 179, 179),
+    (80, 34, 22),
+    (80, 134, 22),
+    (180, 34, 22),
+    (180, 34, 122),
 ]
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-
-# Define the shapes
-tetromino_shapes = {
-    'I': [(-2, 0), (-1, 0), (0, 0), (1, 0)],
-    'O': [(-1, 0), (0, 0), (-1, 1), (0, 1)],
-    'T': [(-1, 0), (0, 0), (1, 0), (0, 1)],
-    'S': [(0, 0), (1, 0), (-1, 1), (0, 1)],
-    'Z': [(-1, 0), (0, 0), (0, 1), (1, 1)],
-    'J': [(-1, 0), (-1, 1), (0, 0), (1, 0)],
-    'L': [(-1, 0), (0, 0), (1, 0), (1, 1)],
-}
-
-# gotta update this for better line detection
-GRID_CELL_SIZE = SAND_RADIUS * 2
-GRID_WIDTH = SCREEN_WIDTH // GRID_CELL_SIZE
-GRID_HEIGHT = SCREEN_HEIGHT // GRID_CELL_SIZE
-sand_grid = [[None for _ in range(GRID_WIDTH)] for _ in range(GRID_HEIGHT)]
 
 
-def create_static_floor():
-    body = pymunk.Body(body_type=pymunk.Body.STATIC)
-    shape = pymunk.Segment(body, (0, 0), (SCREEN_WIDTH, 0), 1)
-    shape.friction = 1.0
-    space.add(body, shape)
+class Figure:
+    x = 0
+    y = 0
 
-def create_walls():
-    wall_thickness = 1  # Increase the thickness of the walls
-    body_left = pymunk.Body(body_type=pymunk.Body.STATIC)
-    shape_left = pymunk.Segment(body_left, (wall_thickness / 2, 0), (wall_thickness / 2, SCREEN_HEIGHT), wall_thickness)
-    shape_left.friction = 1.0
-    space.add(body_left, shape_left)
+    figures = [
+        [[1, 5, 9, 13], [4, 5, 6, 7]],
+        [[4, 5, 9, 10], [2, 6, 5, 9]],
+        [[6, 7, 9, 10], [1, 5, 6, 10]],
+        [[1, 2, 5, 9], [0, 4, 5, 6], [1, 5, 9, 8], [4, 5, 6, 10]],
+        [[1, 2, 6, 10], [5, 6, 7, 9], [2, 6, 10, 11], [3, 5, 6, 7]],
+        [[1, 4, 5, 6], [1, 4, 5, 9], [4, 5, 6, 9], [1, 5, 6, 9]],
+        [[1, 2, 5, 6]],
+    ]
 
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.type = random.randint(0, len(self.figures) - 1)
+        self.color = random.randint(1, len(colors) - 1)
+        self.rotation = 0
 
-    body_right = pymunk.Body(body_type=pymunk.Body.STATIC)
-    shape_right = pymunk.Segment(body_right, (SCREEN_WIDTH - wall_thickness / 2, 0), (SCREEN_WIDTH - wall_thickness / 2, SCREEN_HEIGHT), wall_thickness)
-    shape_right.friction = 1.0
-    space.add(body_right, shape_right)
-
-
-class Tetromino:
-    def __init__(self, shape_name):
-        self.shape_name = shape_name
-        self.color = random.choice(COLORS)
-        self.blocks = []
-        self.create_blocks()
-
-    def create_blocks(self):
-        offsets = tetromino_shapes[self.shape_name]
-        initial_y = SCREEN_HEIGHT - BLOCK_SIZE * 2  # Start near top
-        for offset in offsets:
-            x = SCREEN_WIDTH // 2 + offset[0] * BLOCK_SIZE
-            y = initial_y + offset[1] * BLOCK_SIZE
-            block = create_block(x, y, self.color)
-            self.blocks.append(block)
-
-    def move(self, dx, dy):
-        for block in self.blocks:
-            block.body.position += (dx * BLOCK_SIZE, dy * BLOCK_SIZE)
+    def image(self):
+        return self.figures[self.type][self.rotation]
 
     def rotate(self):
-        pivot = self.blocks[0].body.position
-        for block in self.blocks[1:]:
-            rel = block.body.position - pivot
-            new_rel = pymunk.Vec2d(-rel.y, rel.x)
-            block.body.position = pivot + new_rel
-
-    def check_collision(self):
-        for block in self.blocks:
-            if block.body.position.y - BLOCK_SIZE / 2 <= 0:
-                return True
-            for shape in space.shapes:
-                if shape not in [b.shape for b in self.blocks]:
-                    if block.shape.shapes_collide(shape).points:
-                        return True
-        return False
-
-    def land(self):
-        for block in self.blocks:
-            x, y = block.body.position
-            space.remove(block.body, block.shape)
-            mass = 1.0
-            moment = pymunk.moment_for_box(mass, (BLOCK_SIZE, BLOCK_SIZE))
-            block.body = pymunk.Body(mass, moment)
-            block.body.position = x, y
-            block.shape = pymunk.Poly.create_box(block.body, size=(BLOCK_SIZE, BLOCK_SIZE))
-            block.shape.friction = 0.5
-            block.shape.elasticity = 0
-            block.shape.block = block
-            space.add(block.body, block.shape)
-            block.landed = True
-
-class Block:
-    def __init__(self, x, y, color):
-        self.color = color
-        self.body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
-        self.body.position = x, y
-        self.shape = pymunk.Poly.create_box(self.body, size=(BLOCK_SIZE, BLOCK_SIZE))
-        self.shape.friction = 0.5
-        self.shape.elasticity = 0
-        self.shape.block = self  
-        space.add(self.body, self.shape)
-        self.landed = False
-
-def create_block(x, y, color):
-    return Block(x, y, color)
+        self.rotation = (self.rotation + 1) % len(self.figures[self.type])
 
 
-class SandGrain:
-    def __init__(self, x, y, color):
-        mass = 0.2
-        radius = SAND_RADIUS
-        moment = pymunk.moment_for_circle(mass, 0, radius)
+class Tetris:
+    def __init__(self, height, width):
+        self.level = 2
+        self.score = 0
+        self.state = "start"
+        self.field = []
+        self.height = 0
+        self.width = 0
+        self.x = 100
+        self.y = 60
+        self.zoom = 20
+        self.figure = None
+    
+        self.height = height
+        self.width = width
+        self.field = []
+        self.score = 0
+        self.state = "start"
+        for i in range(height):
+            new_line = []
+            for j in range(width):
+                new_line.append(0)
+            self.field.append(new_line)
 
-        self.body = pymunk.Body(mass, moment)
-        self.body.position = x, y
-        self.shape = pymunk.Circle(self.body, radius)
-        self.shape.friction = 0.5 #come back and adjust this friction
-        self.shape.elasticity = 0
-        self.shape.grain = self  # Reference back to the grain
-        self.color = color
-        space.add(self.body, self.shape)
+    def new_figure(self):
+        self.figure = Figure(3, 0)
 
-    def update_grid_position(self):
-        self.grid_x = int(self.body.position.x // GRID_CELL_SIZE)
-        self.grid_y = int(self.body.position.y // GRID_CELL_SIZE)
-        if 0 <= self.grid_x < GRID_WIDTH and 0 <= self.grid_y < GRID_HEIGHT:
-            sand_grid[self.grid_y][self.grid_x] = self
+    def intersects(self):
+        intersection = False
+        for i in range(4):
+            for j in range(4):
+                if i * 4 + j in self.figure.image():
+                    if i + self.figure.y > self.height - 1 or \
+                            j + self.figure.x > self.width - 1 or \
+                            j + self.figure.x < 0 or \
+                            self.field[i + self.figure.y][j + self.figure.x] > 0:
+                        intersection = True
+        return intersection
 
-def create_sand_grain(x, y, color):
-    return SandGrain(x, y, color)
+    def break_lines(self):
+        lines = 0
+        for i in range(1, self.height):
+            zeros = 0
+            for j in range(self.width):
+                if self.field[i][j] == 0:
+                    zeros += 1
+            if zeros == 0:
+                lines += 1
+                for i1 in range(i, 1, -1):
+                    for j in range(self.width):
+                        self.field[i1][j] = self.field[i1 - 1][j]
+        self.score += lines ** 2
 
-def break_tetromino(tetromino):
-    for block in tetromino.blocks:
-        x, y = block.body.position
-        space.remove(block.body, block.shape)
-        grains_per_row = BLOCK_SIZE // (SAND_RADIUS * 2) #maybe instead of a grid of sand i make the sand in a different way?
-        grain_size = BLOCK_SIZE / grains_per_row
-        for i in range(grains_per_row):
-            for j in range(grains_per_row):
-                gx = x - BLOCK_SIZE / 2 + grain_size / 2 + i * grain_size
-                gy = y - BLOCK_SIZE / 2 + grain_size / 2 + j * grain_size
-                create_sand_grain(gx, gy, block.color)
+    def go_space(self):
+        while not self.intersects():
+            self.figure.y += 1
+        self.figure.y -= 1
+        self.freeze()
 
-def remove_offscreen_grains():
-    for shape in space.shapes[:]:
-        if isinstance(shape, pymunk.Circle):
-            if shape.body.position.y < -10:
-                space.remove(shape.body, shape)
+    def go_down(self):
+        self.figure.y += 1
+        if self.intersects():
+            self.figure.y -= 1
+            self.freeze()
 
-def update_sand_grid():
-    for y in range(GRID_HEIGHT):
-        for x in range(GRID_WIDTH):
-            sand_grid[y][x] = None
+    def freeze(self):
+        for i in range(4):
+            for j in range(4):
+                if i * 4 + j in self.figure.image():
+                    self.field[i + self.figure.y][j + self.figure.x] = self.figure.color
+        self.break_lines()
+        self.new_figure()
+        if self.intersects():
+            self.state = "gameover"
 
-    for shape in space.shapes:
-        if isinstance(shape, pymunk.Circle):
-            grain = shape.grain  
-            grain.update_grid_position()
+    def go_side(self, dx):
+        old_x = self.figure.x
+        self.figure.x += dx
+        if self.intersects():
+            self.figure.x = old_x
 
-def check_and_remove_full_lines():
-    grains_to_remove = []
-    for y in range(GRID_HEIGHT):
-        color_counts = {}
-        for x in range(GRID_WIDTH):
-            grain = sand_grid[y][x]
-            if grain:
-                color = grain.color
-                if color not in color_counts:
-                    color_counts[color] = []
-                color_counts[color].append(grain)
-        for color, grains in color_counts.items():
-            if len(grains) >= GRID_WIDTH:
-                grains_to_remove.extend(grains)
+    def rotate(self):
+        old_rotation = self.figure.rotation
+        self.figure.rotate()
+        if self.intersects():
+            self.figure.rotation = old_rotation
 
-    for grain in grains_to_remove:
-        space.remove(grain.body, grain.shape)
 
-def draw_objects():
-    for shape in space.shapes:
-        if isinstance(shape, pymunk.Poly):
-            draw_rect(shape)
-        elif isinstance(shape, pymunk.Circle):
-            draw_circle(shape)
-        elif isinstance(shape, pymunk.Segment):
-            draw_segment(shape)
+# Initialize the game engine
+pygame.init()
 
-def draw_rect(shape):
-    vertices = [v.rotated(shape.body.angle) + shape.body.position
-                for v in shape.get_vertices()]
-    points = [(int(p.x), int(SCREEN_HEIGHT - p.y)) for p in vertices]
-    color = shape.block.color if hasattr(shape, 'block') else WHITE
-    pygame.draw.polygon(screen, color, points)
+# Define some colors
+BLACK = (0, 0, 0)
+WHITE = (173, 216, 230)
+GRAY = (128, 128, 128)
 
-def draw_circle(shape):
-    position = int(shape.body.position.x), int(SCREEN_HEIGHT - shape.body.position.y)
-    color = shape.grain.color if hasattr(shape, 'grain') else WHITE
-    pygame.draw.circle(screen, color, position, int(shape.radius))
+size = (400, 500)
+screen = pygame.display.set_mode(size)
 
-def draw_segment(shape):
-    body = shape.body
-    pv1 = body.position + shape.a.rotated(body.angle)
-    pv2 = body.position + shape.b.rotated(body.angle)
-    p1 = int(pv1.x), int(SCREEN_HEIGHT - pv1.y)
-    p2 = int(pv2.x), int(SCREEN_HEIGHT - pv2.y)
-    pygame.draw.line(screen, WHITE, p1, p2, int(shape.radius * 2))
+pygame.display.set_caption("Tetris")
 
-# Main game 
-def main():
-    create_static_floor()
-    create_walls()
-    current_tetromino = Tetromino(random.choice(list(tetromino_shapes.keys())))
-    drop_event = pygame.USEREVENT + 1
-    pygame.time.set_timer(drop_event, 500)
+# Loop until the user clicks the close button.
+done = False
+clock = pygame.time.Clock()
+fps = 25
+game = Tetris(20, 10)
+counter = 0
 
-    INITIAL_MOVE_DELAY = 0     # milliseconds (no initial delay)
-    REPEAT_MOVE_DELAY = 10    # milliseconds
-    key_down_time = {}
-    last_move_time = {}
+pressing_down = False
 
-    running = True
-    while running:
-        screen.fill(BLACK)
+while not done:
+    if game.figure is None:
+        game.new_figure()
+    counter += 1
+    if counter > 100000:
+        counter = 0
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-                pygame.quit()
-                sys.exit()
+    if counter % (fps // game.level // 2) == 0 or pressing_down:
+        if game.state == "start":
+            game.go_down()
 
-            elif event.type == drop_event:
-                current_tetromino.move(0, -1)
-                if current_tetromino.check_collision():
-                    current_tetromino.move(0, 1)
-                    current_tetromino.land()
-                    break_tetromino(current_tetromino)
-                    current_tetromino = Tetromino(
-                        random.choice(list(tetromino_shapes.keys())))
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            done = True
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_UP:
+                game.rotate()
+            if event.key == pygame.K_DOWN:
+                pressing_down = True
+            if event.key == pygame.K_LEFT:
+                game.go_side(-1)
+            if event.key == pygame.K_RIGHT:
+                game.go_side(1)
+            if event.key == pygame.K_SPACE:
+                game.go_space()
+            if event.key == pygame.K_ESCAPE:
+                game.__init__(20, 10)
 
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP:
-                    current_tetromino.rotate()
-                    if current_tetromino.check_collision():
-                        for _ in range(3):
-                            current_tetromino.rotate()
-                if event.key in [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_DOWN]:
-                    key_down_time[event.key] = pygame.time.get_ticks()
-                    last_move_time[event.key] = pygame.time.get_ticks()
+    if event.type == pygame.KEYUP:
+            if event.key == pygame.K_DOWN:
+                pressing_down = False
 
-            elif event.type == pygame.KEYUP:
-                if event.key in key_down_time:
-                    del key_down_time[event.key]
-                if event.key in last_move_time:
-                    del last_move_time[event.key]
+    screen.fill(WHITE)
 
-        current_time = pygame.time.get_ticks()
-        keys = pygame.key.get_pressed()
+    for i in range(game.height):
+        for j in range(game.width):
+            pygame.draw.rect(screen, GRAY, [game.x + game.zoom * j, game.y + game.zoom * i, game.zoom, game.zoom], 1)
+            if game.field[i][j] > 0:
+                pygame.draw.rect(screen, colors[game.field[i][j]],
+                                 [game.x + game.zoom * j + 1, game.y + game.zoom * i + 1, game.zoom - 2, game.zoom - 1])
 
-        for key in [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_DOWN]:
-            if keys[key]:
-                if key not in key_down_time:
-                    key_down_time[key] = current_time
-                    last_move_time[key] = current_time
-                    move = True  
-                else:
-                    elapsed = current_time - last_move_time[key]
-                    if elapsed >= REPEAT_MOVE_DELAY:
-                        move = True
-                        last_move_time[key] = current_time
-                    else:
-                        move = False
-                if move:
-                    if key == pygame.K_LEFT:
-                        current_tetromino.move(-1, 0)
-                        if current_tetromino.check_collision():
-                            current_tetromino.move(1, 0)
-                    elif key == pygame.K_RIGHT:
-                        current_tetromino.move(1, 0)
-                        if current_tetromino.check_collision():
-                            current_tetromino.move(-1, 0)
-                    elif key == pygame.K_DOWN:
-                        current_tetromino.move(0, -1)
-                        if current_tetromino.check_collision():
-                            current_tetromino.move(0, 1)
-            else:
-                if key in key_down_time:
-                    del key_down_time[key]
-                if key in last_move_time:
-                    del last_move_time[key]
+    if game.figure is not None:
+        for i in range(4):
+            for j in range(4):
+                p = i * 4 + j
+                if p in game.figure.image():
+                    pygame.draw.rect(screen, colors[game.figure.color],
+                                     [game.x + game.zoom * (j + game.figure.x) + 1,
+                                      game.y + game.zoom * (i + game.figure.y) + 1,
+                                      game.zoom - 2, game.zoom - 2])
 
-        try:
-            space.step(1 / FPS)
-        except Exception as e:
-            print("Physics simulation error:", e)
-            running = False
+    font = pygame.font.SysFont('Calibri', 25, True, False)
+    font1 = pygame.font.SysFont('Calibri', 65, True, False)
+    text = font.render("Score: " + str(game.score), True, BLACK)
+    text_game_over = font1.render("Game Over", True, (255, 125, 0))
+    text_game_over1 = font1.render("Press ESC", True, (255, 215, 0))
 
-        update_sand_grid()
-        check_and_remove_full_lines()
+    screen.blit(text, [0, 0])
+    if game.state == "gameover":
+        screen.blit(text_game_over, [20, 200])
+        screen.blit(text_game_over1, [25, 265])
 
-        remove_offscreen_grains()
+    pygame.display.flip()
+    clock.tick(fps)
 
-        draw_objects()
-
-        pygame.display.flip()
-        clock.tick(FPS)
-
-if __name__ == "__main__":
-    main()
+pygame.quit()
