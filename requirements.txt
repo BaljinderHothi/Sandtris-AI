@@ -4,3 +4,5 @@ stable-baselines3
 numpy
 torch
 huggingface-hub
+imageio
+gradio
